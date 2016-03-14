@@ -1,12 +1,10 @@
-project.version = 2.0;
-
-//Adding dependencies to compile folder.
-allprojects {
+subprojects {
     apply plugin: 'java'
     group 'org.blockserver'
+    buildDir = "${project.rootDir}/build/${project.name}"
 
-    sourceSets{
-        main{
+    sourceSets {
+        main {
             java.srcDir('/src/main/java');
             resources.srcDir('/src/main/resources');
         }
@@ -18,50 +16,97 @@ allprojects {
 
     jar {
         archiveName = "${baseName}.${extension}";
-        destinationDir = new File(rootProject.getRootDir().getPath() + '/Server');
-        from({getDependencyClasses()});
+        if (hasProperty('buildPath'))
+            destinationDir = new File(rootDir.toString() + getProperty('buildPath').toString());
+        else
+            destinationDir = new File("${rootDir}/Server");
+        from{ getDependencyClasses() };
     }
-}
 
-//Configuring jar.
-jar {
-    manifest.attributes('Main-Class': 'org.blockserver.Test')
-}
-
-task run(type: JavaExec, dependsOn: 'buildVersion') {
-    classpath = files("Server/BlockServerProject")
-    main = "org.blockserver.Test"
-}
-
-task buildVersion (dependsOn: 'build'){
-    group = 'build'
-    description = 'Builds the project and increments the version.'
-
-    doLast {
-        allprojects{
-            version+=0.1
+    task setupProperties() {
+        group = 'setup'
+        description = 'Adds defaults to property files.'
+        doLast {
+            Properties properties = takeProperties(it.getProject());
+            addDefaultProperty(properties, 'version', '1.0');
+            addDefaultProperty(properties, 'buildNumber', '1');
+            storeProperties(it.getProject(), properties);
         }
     }
-    doLast {
-        println ':buildVersion UP-TO-DATE'
+
+    task build {
+        dependsOn 'setupProperties'
+        doLast {
+            Properties properties = takeProperties(it.getProject());
+            if (!isNumber(properties.getProperty('buildNumber')))
+                throw new GradleException("\'buildNumber\' must be a double!");
+
+            properties.setProperty('buildNumber', incrementNumber(properties.getProperty('buildNumber')));
+            println 'New Build: ' + properties.getProperty('buildNumber');
+
+            storeProperties(it.getProject(), properties);
+        }
     }
 }
 
+project(':Core') {
+    jar {
+        manifest.attributes('Main-Class': 'org.blockserver.core.Run')
+    }
+
+    task run(type: JavaExec, dependsOn: 'buildVersion') {
+        classpath = files("Server")
+        main = "org.blockserver.core.Run"
+    }
+}
+
+
+def takeProperties(Project project) {
+    File propertiesFile = new File("${project.projectDir}/gradle.properties")
+    if (!propertiesFile.exists())
+        propertiesFile.createNewFile();
+
+    Properties properties = new Properties();
+    properties.load(propertiesFile.newReader());
+
+    return properties;
+}
+
+def addDefaultProperty(Properties properties, Object key, Object defaultProperty) {
+    if (!properties.containsKey(key.toString()))
+        properties.setProperty(key.toString(), defaultProperty.toString());
+}
+
+def storeProperties(Project project, Properties properties) {
+    properties.store(new File("${project.projectDir}/gradle.properties").newWriter(), null);
+}
+
+def incrementNumber(Object number) {
+    if (!isNumber(number))
+        return number.toString();
+    return ((number as Double) + 1).toString();
+}
+
+def isNumber(Object object) {
+    return object.toString().matches("-?\\d+(\\.\\d+)?")
+}
 
 def getDependencyClasses() {
     int added = 0;
     int skipped = 0;
-  //  println 'Adding specified dependencies to jar:'
+    //  println 'Adding specified dependencies to jar:'
+    if (!getConfigurations().contains('compile'))
+        return [];
     List dependencyClasses = getConfigurations().getByName('compile').collect({
-        if (!it.getName().endsWith('.jar')){
+        if (!it.getName().endsWith('.jar')) {
             skipped++;
             return [];
         }
 
-      //  println '/t' + it.getName().replace('.jar', '');
+        //  println '/t' + it.getName().replace('.jar', '');
         added++;
         return zipTree(it);
     });
-   // println 'Completed(Added: ' + added + ' Skipped:' + skipped + ')';
+    // println 'Completed(Added: ' + added + ' Skipped:' + skipped + ')';
     return dependencyClasses;
 }
