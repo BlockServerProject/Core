@@ -1,0 +1,67 @@
+project.version = 2.0;
+
+//Adding dependencies to compile folder.
+allprojects {
+    apply plugin: 'java'
+    group 'org.blockserver'
+
+    sourceSets{
+        main{
+            java.srcDir('/src/main/java');
+            resources.srcDir('/src/main/resources');
+        }
+        test {
+            java.srcDir('/src/test/java');
+            resources.srcDir('/src/test/resources');
+        }
+    }
+
+    jar {
+        archiveName = "${baseName}.${extension}";
+        destinationDir = new File(rootProject.getRootDir().getPath() + '/Server');
+        from({getDependencyClasses()});
+    }
+}
+
+//Configuring jar.
+jar {
+    manifest.attributes('Main-Class': 'org.blockserver.Test')
+}
+
+task run(type: JavaExec, dependsOn: 'buildVersion') {
+    classpath = files("Server/BlockServerProject")
+    main = "org.blockserver.Test"
+}
+
+task buildVersion (dependsOn: 'build'){
+    group = 'build'
+    description = 'Builds the project and increments the version.'
+
+    doLast {
+        allprojects{
+            version+=0.1
+        }
+    }
+    doLast {
+        println ':buildVersion UP-TO-DATE'
+    }
+}
+
+
+def getDependencyClasses() {
+    int added = 0;
+    int skipped = 0;
+  //  println 'Adding specified dependencies to jar:'
+    List dependencyClasses = getConfigurations().getByName('compile').collect({
+        if (!it.getName().endsWith('.jar')){
+            skipped++;
+            return [];
+        }
+
+      //  println '/t' + it.getName().replace('.jar', '');
+        added++;
+        return zipTree(it);
+    });
+   // println 'Completed(Added: ' + added + ' Skipped:' + skipped + ')';
+    return dependencyClasses;
+}
